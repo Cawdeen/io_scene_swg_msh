@@ -23,6 +23,7 @@ import bpy, collections, array, base64, time, datetime, bmesh, os
 from bpy.props import *
 from . import swg_types
 from . import support
+from . import skin_weights
 from . import data_types
 
 oznfulllist = ['face','neck','skull','sideburn_l','sideburn_r','chest','torso_f','torso_b','waist_f','waist_b','r_thigh','r_shin','r_foot','l_thigh','l_shin','l_foot','r_arm','r_forearm','r_hand','l_arm','l_forearm','l_hand']
@@ -63,6 +64,7 @@ def save(context, filepath, *, do_tangents = True):
 
 def export_mgn(filepath, extract_dir, obj, do_tangents = True):    
     starttime = time.time()
+    joint_names, weight_rows = skin_weights.export_weights(obj, obj.data.vertices)
 
     mb = obj.matrix_basis
     if hasattr(obj.data, "transform"):
@@ -216,21 +218,11 @@ def export_mgn(filepath, extract_dir, obj, do_tangents = True):
 
                 running_tri_index += 1
 
-    vertex_groups = obj.vertex_groups
-    joint_names = vertex_groups.keys()
-    twdtdata = {}
-    for name in joint_names:
-        mgn.joint_names.append(name)
-        selverts = [v for v in bm.vertices]
-        indexval = obj.vertex_groups[name].index
-        for v in selverts:
-            for n in v.groups:
-                if n.group == indexval:
-                    if not v.index in twdtdata:
-                        twdtdata[v.index] = []
-                    twdtdata[v.index].append([indexval, n.weight])
-    od = collections.OrderedDict(sorted(twdtdata.items()))
-    mgn.twdt = list(od.values())
+    mgn.joint_names, mgn.twdt = joint_names, weight_rows
+    mgn.max_transforms_vertex = max(len(row) for row in mgn.twdt)
+    mgn.max_transforms_shader = max((len({index for vertex in shader.pidx
+                                        for index, weight in weight_rows[vertex]})
+                                     for shader in mgn.psdts), default=0)
 
     if len(obj.face_maps) > 0:
         mgn.occlusion_zones=[]

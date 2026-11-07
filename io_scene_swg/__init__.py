@@ -33,9 +33,14 @@ bl_info = {
 	"category": "Import-Export",
 }
 
+from . import skeleton_math, animation_rig, skin_weights
+
 if "bpy" in locals():
 	import importlib
 	importlib.reload(asset_paths)
+	importlib.reload(skeleton_math)
+	importlib.reload(animation_rig)
+	importlib.reload(skin_weights)
 	importlib.reload(support)
 	importlib.reload(extents)
 	importlib.reload(swg_types)
@@ -434,7 +439,11 @@ class ExportMGN(bpy.types.Operator, ExportHelper):
 
 		keywords = self.as_keywords(ignore=("check_existing","filter_glob"))
 		print(f"Keyword args: {str(keywords)}")
-		result = export_mgn.save(context, **keywords)
+		try:
+			result = export_mgn.save(context, **keywords)
+		except ValueError as error:
+			self.report({'ERROR'}, str(error))
+			return {'CANCELLED'}
 		if 'ERROR' in result:
 			self.report({'ERROR'}, 'Something went wrong exporting MGN')
 			return {'CANCELLED'}
@@ -840,13 +849,18 @@ class ImportSKT(bpy.types.Operator, ImportHelper):
 	lod_0_only: BoolProperty(
 			name="LOD 0 Only",
 			description="Skeleton files typically contain multiple levels of detail to improve performance. Enabling this option to only load the highest detail skeleton.",
-			default=False,
+			default=True,
 			)
 	
-	connect_bones: BoolProperty(
-			name="Connect Bones",
-			description="SWG skeletons use joints rather than bones. The difference is they have only a position and direction but no length. Sometimes it may provide a more accurate auto weight paint to a mesh if the bones are connected. Enabling this option connects bones' tails to their children.",
+	create_control_rig: BoolProperty(
+			name="Add FK Control Rig",
+			description="Add separate connected controls for animating; preserve native SWG joint axes",
 			default=False,
+			)
+	bone_display_length: FloatProperty(
+			name="Joint Display Length",
+			description="Visual length of game bones; does not change joint transforms",
+			default=0.06, min=0.001, max=10.0,
 			)
 	
 	show_bone_names: BoolProperty(
@@ -863,16 +877,32 @@ class ImportSKT(bpy.types.Operator, ImportHelper):
 
 	files: CollectionProperty(type = bpy.types.OperatorFileListElement, options = {'HIDDEN', 'SKIP_SAVE'},)
 
+	@classmethod
+	def poll(cls, context):
+		return context.mode == 'OBJECT'
+
+	def invoke(self, context, _event):
+		directory = support.asset_directory(context, "appearance/skeleton")
+		if directory:
+			self.filepath = directory
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
+
 	def execute(self, context):
 		keywords = self.as_keywords(ignore=("filter_glob",
 											"files",
 											"filepath"))
 		
-		for f in self.files:   
+		filenames = [f.name for f in self.files] or [os.path.basename(self.filepath)]
+		for filename in filenames:
 			dirname = os.path.dirname(self.filepath)
-			filepath = os.path.join(dirname, f.name)
+			filepath = os.path.join(dirname, filename)
 			print(f'IMPORTING: {self.filepath} {filepath}')
-			result = import_skt.import_skt(context, filepath, **keywords)
+			try:
+				result = import_skt.import_skt(context, filepath, **keywords)
+			except (ValueError, OSError) as error:
+				self.report({'ERROR'}, str(error))
+				return {'CANCELLED'}
 		
 		return {'FINISHED'}
 
@@ -901,7 +931,8 @@ class SKT_PT_import_option(bpy.types.Panel):
 		operator = sfile.active_operator
 		
 		layout.prop(operator, 'lod_0_only')
-		layout.prop(operator, 'connect_bones')
+		layout.prop(operator, 'create_control_rig')
+		layout.prop(operator, 'bone_display_length')
 		layout.prop(operator, 'show_bone_names')
 		layout.prop(operator, 'show_bone_axes')
 
@@ -1770,6 +1801,12 @@ def draw_item(self, context):
 	layout.menu(SWGMenu.bl_idname)
 
 classes = (
+	animation_rig.SWG_OT_create_fk_rig,
+	animation_rig.SWG_PT_animation,
+	skin_weights.SWGWeightSettings,
+	skin_weights.SWG_OT_transfer_weights,
+	skin_weights.SWG_OT_validate_seam_weights,
+	skin_weights.SWG_PT_skin_weights,
 	OBJECT_OT_addon_prefs_swg,
 	SWGPreferences,
 	ImportMSH,
@@ -1828,17 +1865,20 @@ classes = (
 def register():
 	for cls in classes:
 		bpy.utils.register_class(cls)
+	bpy.types.Scene.swg_skin_weights = bpy.props.PointerProperty(type=skin_weights.SWGWeightSettings)
 
 	bpy.types.TOPBAR_MT_file_import.append(import_operators)
 	bpy.types.TOPBAR_MT_file_export.append(export_operators)
 	bpy.types.VIEW3D_HT_header.append(draw_item)
 
 def unregister():
+	if hasattr(bpy.types.Scene, "swg_skin_weights"):
+		del bpy.types.Scene.swg_skin_weights
 	bpy.types.TOPBAR_MT_file_import.remove(import_operators)
 	bpy.types.TOPBAR_MT_file_export.remove(export_operators)
 	bpy.types.VIEW3D_HT_header.remove(draw_item)
 
-	for cls in classes:
+	for cls in reversed(classes):
 		bpy.utils.unregister_class(cls)
 
 if __name__ == "__main__":

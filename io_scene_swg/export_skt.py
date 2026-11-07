@@ -13,11 +13,15 @@
 
 import bpy, os, math, time, datetime
 from . import nsg_iff
+from . import skeleton_math, animation_rig
 from bpy.props import *
 from mathutils import Vector, Quaternion, Matrix
 
 def save(context, filepath,):
     collection = bpy.context.view_layer.active_layer_collection.collection
+    active = animation_rig.game_skeleton_for(context.active_object)
+    if active:
+        collection = active.users_collection[0]
     if collection != None:
         dirname = os.path.dirname(filepath)
         fullpath = os.path.join(dirname, collection.name.split(".")[0]+".skt")
@@ -40,11 +44,23 @@ def export_skt(context, filepath, collection):
         # Skip nested objects. We only want ones directly under the collection.
         if obj.parent:
             continue
-        if obj.type == 'ARMATURE':
+        if obj.type == 'ARMATURE' and not obj.get("swg_rig_type"):
             arm_objs.append(obj)
     
     if len(arm_objs) == 0:
         return {'CANCELLED'}
+
+    if any(arm.data.get("swg_skeleton_version") == 2 for arm in arm_objs):
+        print("Reimport the earlier skeleton preview before exporting: its coordinate conversion has changed")
+        return {'CANCELLED'}
+
+    native = [arm for arm in arm_objs
+              if arm.data.get("swg_skeleton_version") == skeleton_math.SKELETON_VERSION]
+    if native:
+        if len(native) != len(arm_objs):
+            print("Cannot export legacy and native SWG skeletons in the same collection")
+            return {'CANCELLED'}
+        return export_native_skeletons(filepath, native)
 
     iff = nsg_iff.IFF(initial_size=512000)
     iff.insertForm("SLOD")
@@ -194,4 +210,57 @@ def export_skt(context, filepath, collection):
 
     now = time.time()
     print(f"Successfully wrote: {filepath} Duration: " + str(datetime.timedelta(seconds=(now-starttime))))
+    return {'FINISHED'}
+
+
+def export_native_skeletons(filepath, armatures):
+    """Export rest joints, not control bones or their evaluated animated pose."""
+    iff = nsg_iff.IFF(initial_size=512000)
+    iff.insertForm("SLOD")
+    iff.insertForm("0000")
+    armatures = sorted(armatures, key=lambda arm: arm.data.get("swg_lod", 0))
+    iff.insertChunk("INFO")
+    iff.insert_int16(len(armatures))
+    iff.exitChunk("INFO")
+    for arm in armatures:
+        bones = [bone for bone in arm.data.bones if bone.use_deform]
+        if not bones:
+            return {'CANCELLED'}
+        indices = {bone.name: i for i, bone in enumerate(bones)}
+        parents = []
+        for bone in bones:
+            parent = bone.parent
+            while parent and parent.name not in indices:
+                parent = parent.parent
+            parents.append(parent)
+        joint_data = [skeleton_math.export_joint_data(bone, parent)
+                      for bone, parent in zip(bones, parents)]
+        iff.insertForm("SKTM")
+        iff.insertForm("0002")
+        iff.insertChunk("INFO")
+        iff.insert_int32(len(bones))
+        iff.exitChunk("INFO")
+        iff.insertChunk("NAME")
+        for bone in bones:
+            iff.insertChunkString(bone.name)
+        iff.exitChunk("NAME")
+        iff.insertChunk("PRNT")
+        for parent in parents:
+            iff.insert_int32(indices[parent.name] if parent else -1)
+        iff.exitChunk("PRNT")
+        for tag, column, writer in (
+                ("RPRE", 0, iff.insertFloatVector4),
+                ("RPST", 1, iff.insertFloatVector4),
+                ("BPTR", 2, iff.insertFloatVector3),
+                ("BPRO", 3, iff.insertFloatVector4),
+                ("JROR", 4, iff.insert_int32)):
+            iff.insertChunk(tag)
+            for row in joint_data:
+                writer(row[column])
+            iff.exitChunk(tag)
+        iff.exitForm("0002")
+        iff.exitForm("SKTM")
+    iff.exitForm("0000")
+    iff.exitForm("SLOD")
+    iff.write(filepath)
     return {'FINISHED'}

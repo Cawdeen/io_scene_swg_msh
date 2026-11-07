@@ -31,6 +31,37 @@ Should work with Blender 2.9+ and 3+
 
 ## How To Use
 
+### Skeletons and animation controls
+
+Open the 3D View sidebar (`N`) > **SWG** > **SWG Animation**.
+
+1. **Import SWG Skeleton** imports native game joints. By default only LOD 0 is loaded; disable **LOD 0 Only** to import all skeleton LODs. Lower LODs start hidden in the viewport.
+2. Optionally enable **Add FK Control Rig** during import, or select the imported armature in Object Mode and click **Create FK Control Rig** later.
+3. Select the control armature, enter Pose Mode and rotate its named bones. Root translation is available; child translation and scale controls are locked. The first rig is FK only; IK and ANS import/export are not implemented by this change.
+4. **Export Rest Skeleton** exports the game skeleton's collection, including its LODs, even when the control rig is selected. It exports rest data, not the current animation pose, and excludes the control armature.
+
+The readable connected controls live in a separate armature. Hidden output bones preserve each native joint's orientation while world-space constraints drive the game skeleton. For skinning, use the game skeleton as the mesh's Armature modifier target, not the controls. Existing MGN vertex groups can retain their original weights; this step does not automatically bind meshes or replace weights.
+
+Native skeletons use the same full `(-x, -z, y)` coordinate conversion as MGN's default Z-forward/Y-up import (including the MGN reader's Z flip). A local X-axis reflection keeps bone frames right-handed. SKT joint pre/post rotations, bind rotations/translations, rotation orders, parent relationships and LOD identifiers are retained. Bone display length does not change the joint rest frames. The old **Connect Bones** import option is replaced by separate FK controls because pointing a game bone toward its child changes its animation axes.
+
+Reimport skeletons created by the previous importer to use the new control rig. Previously imported skeletons retain the legacy export path; new native skeletons use the corrected rest-transform export. Do not mix legacy and native skeletons in a single export collection. A rig must be created before animation or constraints are added to the game joints.
+
+### Clothing weights and occlusion seams
+
+In **SWG Animation > Skin Weights**, select the clothing mesh in Object Mode. Set **Reference Body** to `hum_m_body_l0` (the default) and choose the imported game skeleton or its FK rig. Click **Transfer Body Weights**. The tool copies weights from the body and binds the clothing to the game skeleton, preserving existing nonbone groups, mesh positions, face maps and shape keys. It does not use Blender's bone-heat automatic weights or change the reference body.
+
+- Coincident reference vertices copy their bone weights exactly, including original float values and influence counts.
+- New interior vertices sample the nearest body triangle and interpolate its weights. Known face-map zones restrict correspondence to the same body region. **Interior Influence Limit** applies only to these interpolated interiors; zero leaves influences unlimited.
+- Protected seams default to face-map borders and open mesh edges. **Smooth Reference Edge** projects new or offset seam vertices onto a compatible reference boundary and interpolates its endpoint weights. Original endpoints retain their exact vectors. This accommodates thicker jackets/armor and different seam vertex spacing, but remeshed seam weights are derived rather than identical to a single original vertex.
+- **Copy Nearest Vertex Exactly** copies an original seam vertex's vector unchanged, even when the garment is offset. This gives exact reference values but can produce less smooth transitions on a remeshed seam.
+- For a specific cuff, collar or other boundary, use **Target Seams > Vertex Group** and choose a separate nonbone mask group (for example `SWG_SeamLock`). Optionally choose a **Reference Seam Group** on the body to restrict matching to the intended loop. In smooth mode, the reference group's selected edges define the curve; isolated vertices and multi-zone junctions fall back to vertex copies.
+
+Reference and clothing must be aligned in their rest positions in world space. Clothing thickness does not require coincident positions; **Max Reference Distance** limits how far correspondence may reach (zero disables the limit). Distant or ambiguous matches stop the operation before weights change. Automatic boundary detection also sees open edges caused by split topology; use an explicit seam group when those should not be protected.
+
+**Validate Seam Weights** checks the target against the currently selected reference/matching settings without changing it. It reports original-vector copies separately from interpolated seam weights and reports positional offset separately. It detects later weight edits but does not freeze seam weights against subsequent painting or normalization. Agreement with this mapping is not a guarantee against clipping: inspect the garment in representative poses, especially bulky armor and closely spaced surfaces.
+
+MGN export excludes nonbone helper groups when a skeleton is bound/recorded and remaps bone indices accordingly. Unbound meshes exclude reserved `SWG_` helper groups. Weighting does not transfer face-map assignments or body-shape blend shapes; those remain separate asset-authoring steps.
+
 ### Asset folder settings
 In Blender Preferences > Add-ons > NSG SWG Tools, choose a **Folder Layout**:
 
