@@ -37,14 +37,54 @@ Open the 3D View sidebar (`N`) > **SWG** > **SWG Animation**.
 
 1. **Import SWG Skeleton** imports native game joints. By default only LOD 0 is loaded; disable **LOD 0 Only** to import all skeleton LODs. Lower LODs start hidden in the viewport.
 2. Optionally enable **Add FK Control Rig** during import, or select the imported armature in Object Mode and click **Create FK Control Rig** later.
-3. Select the control armature, enter Pose Mode and rotate its named bones. Root translation is available; child translation and scale controls are locked. The first rig is FK only; IK and ANS import/export are not implemented by this change.
+3. Select the control armature, enter Pose Mode and rotate its named bones. Root translation is available; child translation and scale controls are locked. The rig currently provides FK controls; ANS import/export is available below. IK remains future work; FBX/Mixamo retargeting is available below.
 4. **Export Rest Skeleton** exports the game skeleton's collection, including its LODs, even when the control rig is selected. It exports rest data, not the current animation pose, and excludes the control armature.
 
-The readable connected controls live in a separate armature. Hidden output bones preserve each native joint's orientation while world-space constraints drive the game skeleton. For skinning, use the game skeleton as the mesh's Armature modifier target, not the controls. Existing MGN vertex groups can retain their original weights; this step does not automatically bind meshes or replace weights.
+The readable controls meet at rest and live in a separate armature. They remain parented without Blender's physical bone-connection flag, allowing SWG child-joint translation keys to work. Hidden output bones preserve each native joint's orientation while world-space constraints drive the game skeleton. For skinning, use the game skeleton as the mesh's Armature modifier target, not the controls. Existing MGN vertex groups can retain their original weights; this step does not automatically bind meshes or replace weights.
 
 Native skeletons use the same full `(-x, -z, y)` coordinate conversion as MGN's default Z-forward/Y-up import (including the MGN reader's Z flip). A local X-axis reflection keeps bone frames right-handed. SKT joint pre/post rotations, bind rotations/translations, rotation orders, parent relationships and LOD identifiers are retained. Bone display length does not change the joint rest frames. The old **Connect Bones** import option is replaced by separate FK controls because pointing a game bone toward its child changes its animation axes.
 
 Reimport skeletons created by the previous importer to use the new control rig. Previously imported skeletons retain the legacy export path; new native skeletons use the corrected rest-transform export. Do not mix legacy and native skeletons in a single export collection. A rig must be created before animation or constraints are added to the game joints.
+
+### SWG animation import and export
+
+Select the native SWG skeleton, its FK rig, or a mesh bound to it. In **SWG Animation**, use **Import Animation** / **Export Animation**; both are also available through File > Import/Export > SWG Animation (.ans). Reimport legacy skeletons with the current SKT importer first.
+
+**Import:** supports compressed `CKAT/0001` and uncompressed `KFAT/0003`. It creates a new Blender Action and retains the previous Action. The sidebar's Action selector can switch between imported clips. **Use Animation Frame Rate** defaults on and sets the scene FPS and playback range; when disabled, action key times are converted to the current scene FPS. Import bakes samples at the source clip's frame rate with quaternion continuity and linear Blender F-curves. Interframe Blender interpolation can differ slightly from the client's quaternion slerp; exported samples are evaluated at the chosen output FPS.
+
+On an FK rig, imported actions drive the controls; without a rig, they drive the native game joints. Early connected FK rigs are upgraded without changing rest positions, lengths or parenting so child-joint translation tracks can play. Import stops before replacing the Action if NLA tracks or drivers would interfere. Strict joint matching is optional: otherwise unmatched weapon/attachment joint tracks are retained as custom-property F-curves in **Extra Joint: name** groups and exported, with a warning that the selected skeleton cannot pose them.
+
+**Export:** writes client-readable, uncompressed `KFAT/0003` and bakes the evaluated game skeleton, including FK constraints and NLA pose motion. The active Action's exact frame range and original FPS are defaults; both can be changed in the export dialog. The exporter restores the current frame and does not replace Actions or modify skeleton rest data. Output files are encoded/validated before the destination is opened. Animated scale/shear is unsupported by SWG and is rejected. Animated game-skeleton object transforms must first be baked into root-joint or locomotion channels. NLA clips carrying SWG message markers must be baked to an active Action with correctly placed markers before export.
+
+Animation messages (for example footsteps) appear as Action pose markers. Existing message names, repeated triggers and timing survive round trips; moving or renaming markers edits them. Locomotion translation, rotation and speed are retained as editable custom-property F-curves under **SWG Locomotion**, in Blender axes. **Preview is in place**: these locomotion channels do not move the character through the viewport. They are exported separately from the joint animation to avoid double-applying root motion. A small number of legacy compressed rotations round just outside the quaternion unit sphere; those are normalized and reported on import.
+
+The evaluated-pose exporter accepts motion produced by the FBX retargeting workflow below. Importing an arbitrary FBX Action alone does not perform bone mapping or rest-pose/axis conversion.
+
+Development checks:
+
+- `python -m unittest discover -s tests -v` checks path resolution and the standalone ANS codec.
+- `python tests/check_animation_corpus.py <appearance/animation>` reads an existing animation corpus without changing it.
+- `blender --background --factory-startup --python-exit-code 1 --python tests/blender_animation_smoke.py -- <dsrc>` verifies real CKAT/KFAT clips against client matrix equations, authored FK/NLA motion, messages, locomotion, frame rates, child translations and on-disk export/import round trips. Other Blender smoke scripts cover skeletons, weighting and asset imports.
+
+### FBX / Mixamo retargeting
+
+Import the FBX normally, then open **SWG Animation > Retarget FBX**:
+
+1. Set **FBX Source** to the imported armature and **SWG Rig** to the SWG FK control rig. **Source Action** can select another compatible Action; leaving it empty uses the FBX armature's active Action.
+2. Click **Load Mixamo Preset**. This finds Mixamo names with or without namespace prefixes, fills an editable mapping table, and loads the source Action's frame range. Use the checkbox to disable a row, bone selectors to edit it, and +/- to add or remove rows. The preset maps 34 human controls; SWG ulna and hold joints inherit from their parents. Extra Mixamo middle/pinky fingers have no direct SWG human counterparts.
+3. Leave **Reference Pose > Automatic A/T-Pose Correction** selected and click **Calibrate**. It aligns anatomical facing/up, matches rest bone directions and compensates roll without changing either rest skeleton. Root and terminal controls (including toes) retain their rest orientation because their display tails do not define anatomical directions. **Motion Scale = 0** uses the leg-length ratio; positive values override translation scaling. Uniform FBX object scales such as 0.01 are supported.
+4. For manual calibration, pose both rigs to the same posture, return to Object Mode, choose **Use Current Reference Poses**, then **Calibrate**. Recalibrate after changing mappings, rest bones, calibration settings or rig placement.
+5. Choose **In Place** for fixed horizontal position with hip bounce, or **SWG Locomotion** to retain planar travel in the separate locomotion channels. Optional **Extract Facing Rotation** moves heading changes into locomotion rotation; pelvic sway can require cleanup. Both modes preview in place, consistent with ANS import.
+6. Click **Preview Retarget** and press Space to inspect the resulting Action. Preview samples the source and creates an editable Action; it is not a live constraint link. After editing the source, mapping or settings, generate another preview.
+7. Click **Bake to New Action** for a retained Action, then **Export Animation**. Existing Actions are kept. The FBX source Action, both rest skeletons, weights and native game-joint FK constraints are preserved.
+
+The frame range and step control sampling. Step 1 is recommended for final exports. The scene's FPS determines playback and is stored on the new Action. Object scales must be positive and uniform; the SWG control/game armature object transforms must match. Target drivers/constraints/NLA tracks and source NLA clips must be removed/muted before single-Action retargeting. Root travel, rotations and target proportions are transferred; animated stretch/scale, IK foot-contact correction and a five-finger-to-three-finger anatomical solve are not generated. Inspect foot contacts and finger poses before shipping an animation.
+
+Every operation prints **[SWG Retarget]** reports to Blender's system console. Calibration lists mappings, inherited joints, scale and missing-bone warnings. Preview/bake reports source-channel resolution, sampled frames, motion detected and a numerical game-joint check at the start/middle/end. **PREVIEW SUCCESS** / **BAKE SUCCESS** means those checks passed, not that artistic cleanup or in-game playback has been validated. Errors stop processing with a reason. Use **Print Last Report** to repeat the summary, or **Toggle System Console** on Windows to view it.
+
+Mappings and calibration are saved with the .blend. A preset can be reused with compatible Actions on the same source skeleton. A new FBX with different bone names/rest pose should be selected as the source and calibrated again. Retarget outputs also use safe default export filenames for names containing FBX separators such as `|`.
+
+Development check: `blender --background --factory-startup --python-exit-code 1 --python tests/blender_retarget_smoke.py -- <dsrc> [source_fixture.blend]` covers A/T correction, differing unit scales, source directions, both calibration modes, root/heading extraction, error handling, source preservation and actual ANS export/import. The optional isolated library fixture tests an existing imported FBX; it is not needed to run the plugin.
 
 ### Clothing weights and occlusion seams
 

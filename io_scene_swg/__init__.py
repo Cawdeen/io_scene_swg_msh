@@ -33,7 +33,7 @@ bl_info = {
 	"category": "Import-Export",
 }
 
-from . import skeleton_math, animation_rig, skin_weights
+from . import skeleton_math, animation_rig, skin_weights, ans_format, animation_io, retarget_math, retarget
 
 if "bpy" in locals():
 	import importlib
@@ -41,6 +41,10 @@ if "bpy" in locals():
 	importlib.reload(skeleton_math)
 	importlib.reload(animation_rig)
 	importlib.reload(skin_weights)
+	importlib.reload(ans_format)
+	importlib.reload(animation_io)
+	importlib.reload(retarget_math)
+	importlib.reload(retarget)
 	importlib.reload(support)
 	importlib.reload(extents)
 	importlib.reload(swg_types)
@@ -1021,6 +1025,7 @@ class SAT_PT_export_option(bpy.types.Panel):
 		layout.prop(operator, 'export_skts')
 
 def import_operators(self, context):
+	self.layout.operator(animation_io.SWG_OT_import_animation.bl_idname, text="SWG Animation (.ans)")
 	self.layout.operator(ImportLOD.bl_idname, text="SWG Static Level of Detail (.lod)")
 	self.layout.operator(ImportMSH.bl_idname, text="SWG Static Mesh (.msh)")
 	self.layout.operator(ImportMGN.bl_idname, text="SWG Animated Mesh (.mgn)")
@@ -1028,6 +1033,7 @@ def import_operators(self, context):
 	self.layout.operator(ImportPOB.bl_idname, text="SWG Portalized Object (.pob)")
 
 def export_operators(self, context):
+	self.layout.operator(animation_io.SWG_OT_export_animation.bl_idname, text="SWG Animation (.ans)")
 	self.layout.operator(ExportLOD.bl_idname, text="SWG Static Level of Detail (.lod)")
 	self.layout.operator(ExportMSH.bl_idname, text="SWG Static Mesh (.msh)")
 	self.layout.operator(ExportSAT.bl_idname, text="SWG Skeletal Animation Template (.sat)")
@@ -1801,8 +1807,22 @@ def draw_item(self, context):
 	layout.menu(SWGMenu.bl_idname)
 
 classes = (
+	animation_io.SWG_OT_import_animation,
+	animation_io.SWG_OT_export_animation,
 	animation_rig.SWG_OT_create_fk_rig,
 	animation_rig.SWG_PT_animation,
+	retarget.SWGRetargetBone,
+	retarget.SWGRetargetSettings,
+	retarget.SWG_UL_retarget_mapping,
+	retarget.SWG_OT_retarget_preset,
+	retarget.SWG_OT_retarget_range,
+	retarget.SWG_OT_retarget_add_mapping,
+	retarget.SWG_OT_retarget_remove_mapping,
+	retarget.SWG_OT_retarget_calibrate,
+	retarget.SWG_OT_retarget_preview,
+	retarget.SWG_OT_retarget_bake,
+	retarget.SWG_OT_retarget_report,
+	retarget.SWG_PT_retarget,
 	skin_weights.SWGWeightSettings,
 	skin_weights.SWG_OT_transfer_weights,
 	skin_weights.SWG_OT_validate_seam_weights,
@@ -1866,12 +1886,15 @@ def register():
 	for cls in classes:
 		bpy.utils.register_class(cls)
 	bpy.types.Scene.swg_skin_weights = bpy.props.PointerProperty(type=skin_weights.SWGWeightSettings)
+	bpy.types.Scene.swg_retarget = bpy.props.PointerProperty(type=retarget.SWGRetargetSettings)
 
 	bpy.types.TOPBAR_MT_file_import.append(import_operators)
 	bpy.types.TOPBAR_MT_file_export.append(export_operators)
 	bpy.types.VIEW3D_HT_header.append(draw_item)
 
 def unregister():
+	if hasattr(bpy.types.Scene, "swg_retarget"):
+		del bpy.types.Scene.swg_retarget
 	if hasattr(bpy.types.Scene, "swg_skin_weights"):
 		del bpy.types.Scene.swg_skin_weights
 	bpy.types.TOPBAR_MT_file_import.remove(import_operators)

@@ -72,8 +72,10 @@ def create_fk_rig(context, source):
         if original.parent:
             control = controls[original.name]
             control.parent = controls[original.parent.name]
-            if (control.head - control.parent.tail).length < 1e-6:
-                control.use_connect = True
+            # Meeting tails/heads provide the readable skeleton shape. Do not
+            # weld them: Blender suppresses connected children's translation
+            # channels, which SWG uses for telescoping/offset joint animation.
+            control.use_connect = False
         output = data.edit_bones.new("SWG_OUTPUT_" + original.name)
         set_bone_frame(output, original.matrix_local, original.length)
         output.parent = controls[original.name]
@@ -129,6 +131,17 @@ class SWG_PT_animation(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
+        row = layout.row(align=True)
+        row.operator('import_scene.swg_ans', text='Import Animation')
+        row.operator('export_scene.swg_ans', text='Export Animation')
+        from . import animation_io
+        try:
+            _, owner = animation_io.targets(context)
+            if owner.animation_data:
+                layout.template_ID(owner.animation_data, 'action')
+        except ValueError:
+            pass
+        layout.label(text='Locomotion channels preview in place.')
         layout.operator("import_scene.skt", text="Import SWG Skeleton", icon='ARMATURE_DATA')
         obj = context.active_object
         if is_game_skeleton(obj):

@@ -99,7 +99,9 @@ def exercise(path, temporary, all_lods=False):
     rig = bpy.context.active_object
     assert rig["swg_game_skeleton"] == source.name
     assert not any(bone.use_deform for bone in rig.data.bones)
-    assert any(bone.use_connect for bone in rig.data.bones)
+    assert not any(bone.use_connect for bone in rig.data.bones)
+    assert any((bone.head_local-bone.parent.tail_local).length<1e-6
+               for bone in rig.data.bones if bone.parent and not bone.hide)
     bpy.context.view_layer.update()
     for bone in source.pose.bones:
         near(bone.matrix, before[bone.name])
