@@ -22,6 +22,7 @@
 import bpy, collections, array, base64, time, datetime, bmesh, os
 from bpy.props import *
 from . import swg_types
+from . import support
 from . import data_types
 
 oznfulllist = ['face','neck','skull','sideburn_l','sideburn_r','chest','torso_f','torso_b','waist_f','waist_b','r_thigh','r_shin','r_foot','l_thigh','l_shin','l_foot','r_arm','r_forearm','r_hand','l_arm','l_forearm','l_hand']
@@ -54,7 +55,7 @@ def save(context, filepath, *, do_tangents = True):
         else:
             dirname = os.path.dirname(filepath)
             fullpath = os.path.join(dirname, obj.name + ".msh")
-            extract_dir=context.preferences.addons[__package__].preferences.swg_root
+            extract_dir=support.get_asset_roots(context)
             result = export_mgn(fullpath, extract_dir, obj, do_tangents)
             if not 'FINISHED' in result:
                 return {'CANCELLED'}

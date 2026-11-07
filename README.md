@@ -31,8 +31,19 @@ Should work with Blender 2.9+ and 3+
 
 ## How To Use
 
+### Asset folder settings
+In Blender Preferences > Add-ons > NSG SWG Tools, choose a **Folder Layout**:
+
+- **Single Asset Directory (SWG Source):** set **SWG Source Asset Root** to the client directory containing `appearance`, `shader`, and `texture`.
+- **DSRC Repository (Restoration):** set **DSRC Repository Root** to the repository itself, for example `D:/r3git/dsrc`. Assets are searched under `sku.0/sys.client/compiled/game`, then `sku.0/sys.shared/compiled/game`, then `sku.0/sys.server/compiled/game`. The first matching virtual asset path wins.
+- **Auto:** set **Asset Root** to either of the above directories. A directory containing `sku.0` is treated as DSRC; otherwise it is treated as a single asset directory. If Asset Root is empty, Auto uses your saved SWG Source Asset Root, preserving existing settings.
+
+The three paths are saved independently. Switching between SWG Source and DSRC retains both paths. Save Preferences if Blender's automatic preference saving is disabled.
+
+POB, LOD, MGN and MSH imports share this lookup, including referenced appearances, floors, shaders, palettes and textures. Import browsers open in the corresponding resolved asset directory. The preferences display the search order and flag missing directories; missing dependencies print their searched paths in Blender's console.
+
 ### General SWG helper functions
-* In the 3D View toolbar (contains menus like "View", "Select", "Object", etc), the very furthest right menu will be "SWG". This is where you can find some helper functions. NOTE: For many of these to work, you need to set the "SWG Client Extract Dir" path in the add-on preferences. This is a directory containing the full directory structure from a "Full Client Extract" via SIE. It should be the directory which contains child directories like "appearance", "shader" and "texture"
+* In the 3D View toolbar (contains menus like "View", "Select", "Object", etc), the very furthest right menu will be "SWG". This is where you can find some helper functions. NOTE: For many of these to work, you need to configure the asset folder settings above
   * "Initialize MGN data (occlusions, bones, blends) from an existing MGN": Browse to an existing MGN file, and sets up the current objects's Occlusion, Bone and Blend Shape data to match. A very quick way to get started making a similar item like a new wearable. Does not actually assign any mesh verts to the Vertex Groups, faces to the Face Maps, or do anything with materials. 
   * "Find and load materials": If you named your materials identically to a shader filename (no preceding dir or extention, just "concertina_a_aa7" for example), and the path is set correctly, the images and some settings should automatically be applied to the materials in Blender
     * You can repeat selecting "Find and load materials" as often as you want (if you change a SWG Shader on disk, or want to change the shader completely), and it should keep any existing material assignments in the scene. 

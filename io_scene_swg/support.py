@@ -8,6 +8,7 @@ import bmesh
 
 from . import extents
 from . import swg_types
+from . import asset_paths
 
 SWG_EFT_ALPHA = 1
 SWG_EFT_SPEC = 2
@@ -24,14 +25,14 @@ def clean_path(path):
 	return path.replace('\\', '/') if (os.sep == '/') else path.replace('/', '\\')
 
 def find_file(relative_path, root):
-	root=clean_path(root)
-	relative_path=clean_path(relative_path)
-	if os.path.exists(os.path.join(root, relative_path)):
-		#print(f"Found {relative_path}! Returning: {os.path.join(root,relative_path)}")
-		return os.path.join(root,relative_path)
-	else:
-		#print(f"{os.path.join(root,relative_path)} doesn't exist!")
-		return None
+	return asset_paths.find_file(relative_path, root)
+
+def get_asset_roots(context):
+	preferences = context.preferences.addons[__package__].preferences
+	return asset_paths.roots_from_preferences(preferences, bpy.path.abspath)
+
+def asset_directory(context, relative_path):
+	return asset_paths.browse_directory(relative_path, get_asset_roots(context))
 
 def load_shared_image(path, root, convert_to_png = False):   
 	abs_path = find_file(path, root)
@@ -45,11 +46,11 @@ def load_shared_image(path, root, convert_to_png = False):
 	
 	image = None
 
-	shortname = os.path.basename(out_path)
+	image_path = os.path.normcase(os.path.abspath(out_path))
 	for img in bpy.data.images: 
-		if shortname == img.name:
+		if img.source == 'FILE' and os.path.normcase(os.path.abspath(bpy.path.abspath(img.filepath, library=img.library))) == image_path:
 			image = img
-			print(f"Found image: shortname at {abs_path}. Already is: {img.name}. Has data? {img.has_data}")
+			print(f"Reusing image at {out_path}: {img.name}")
 			break
 	
 	if image == None:

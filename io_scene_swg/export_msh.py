@@ -64,7 +64,7 @@ def save(context, filepath, *, flip_uv_vertical=False):
 		else:
 			dirname = os.path.dirname(filepath)
 			fullpath = os.path.join(dirname, ob.name+".msh")
-			extract_dir=context.preferences.addons[__package__].preferences.swg_root
+			extract_dir=support.get_asset_roots(context)
 			result = export_one(fullpath, extract_dir, ob, flip_uv_vertical)
 			if not 'FINISHED' in result:
 				return {'CANCELLED'}

@@ -54,7 +54,7 @@ def save(context, filepath, *, flip_uv_vertical=False, export_children=True):
     if collection != None:
         dirname = os.path.dirname(filepath)
         fullpath = os.path.join(dirname, collection.name+".lod")
-        extract_dir=context.preferences.addons[__package__].preferences.swg_root
+        extract_dir=support.get_asset_roots(context)
         return export_one(fullpath, extract_dir, collection, flip_uv_vertical, export_children)
     else:
         return {'CANCELLED'}

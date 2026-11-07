@@ -32,7 +32,7 @@ def import_mgn( context,
                 *,      
                 global_matrix=None):
 
-    swg_root = context.preferences.addons[__package__].preferences.swg_root
+    swg_root = support.get_asset_roots(context)
 
     mgn = swg_types.SWGMgn(filepath, swg_root)
     mgn.load()

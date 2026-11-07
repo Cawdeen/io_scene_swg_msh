@@ -154,7 +154,7 @@ def save(context,
 
 	dirname = os.path.dirname(filepath)
 	fullpath = os.path.join(dirname, pob.name+".pob")
-	extract_dir=context.preferences.addons[__package__].preferences.swg_root
+	extract_dir=support.get_asset_roots(context)
 	return export_one(fullpath, extract_dir, pob, (selected_collections if exporting_specific_cells_only else None), flip_uv_vertical, export_children, use_imported_crc)
 
 def export_one(fullpath, extract_dir, collection, specific_cells_to_export, flip_uv_vertical, export_children, use_imported_crc):

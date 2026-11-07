@@ -45,7 +45,7 @@ def load_new(context,
              do_collision=True
              ):  
 
-    s=context.preferences.addons[__package__].preferences.swg_root
+    s=support.get_asset_roots(context)
      
     lodFile = swg_types.LodFile(filepath)
     if not lodFile.load(filepath):

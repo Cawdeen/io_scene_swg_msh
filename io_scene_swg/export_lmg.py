@@ -1,6 +1,7 @@
 import os, bpy
 from . import swg_types
 from . import export_mgn
+from . import support
 
 def save(context, filepath, *, export_mgns = True, do_tangents = True,):
     collection = bpy.context.view_layer.active_layer_collection.collection
@@ -16,7 +17,7 @@ def export_lmg(context, filepath, collection, export_mgns = True, do_tangents = 
     print(f"LMG Name: {lmg_name}")
 
     dirname = os.path.dirname(filepath)
-    extract_dir = context.preferences.addons[__package__].preferences.swg_root
+    extract_dir = support.get_asset_roots(context)
 
     skts_col = None
     hardpoints_col = None

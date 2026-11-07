@@ -69,7 +69,7 @@ def import_msh(context,
 
 	print(f'Importing msh: {filepath} Flip UV: {flip_uv_vertical}')
 
-	swg_root = context.preferences.addons[__package__].preferences.swg_root
+	swg_root = support.get_asset_roots(context)
 	msh = swg_types.SWGMesh(filepath, swg_root)
 	if not msh.load():
 		return {'CANCELLED'}

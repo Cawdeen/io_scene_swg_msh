@@ -41,7 +41,7 @@ def load_new(context,
 			 remove_duplicate_verts=True
 			 ):  
 
-	SWG_ROOT=context.preferences.addons[__package__].preferences.swg_root
+	SWG_ROOT=support.get_asset_roots(context)
 	print(f"Loading pob {filepath}")
 	pob = swg_types.PobFile(filepath)
 	pob.load()		

@@ -35,6 +35,7 @@ bl_info = {
 
 if "bpy" in locals():
 	import importlib
+	importlib.reload(asset_paths)
 	importlib.reload(support)
 	importlib.reload(extents)
 	importlib.reload(swg_types)
@@ -56,6 +57,7 @@ if "bpy" in locals():
 	importlib.reload(export_lmg)
 	importlib.reload(export_sat)
 else:
+	from . import asset_paths
 	from . import support
 	from . import extents
 	from . import swg_types
@@ -107,7 +109,7 @@ from bpy.types import (
 
 def import_swg_file(context, file):
 	obj=None
-	SWG_ROOT=context.preferences.addons[__package__].preferences.swg_root
+	SWG_ROOT=support.get_asset_roots(context)
 	fullpath = support.find_file(file, SWG_ROOT)
 	if file.endswith(".apt"):
 		apt = swg_types.AptFile(fullpath, "")	
@@ -125,9 +127,29 @@ class SWGPreferences(AddonPreferences):
 	# when defining this in a submodule of a python package.
 	bl_idname = __name__
 
+	asset_layout: EnumProperty(
+		name="Folder Layout",
+		items=(
+			('AUTO', "Auto", "Detect a single asset directory or DSRC repository"),
+			('FLAT', "Single Asset Directory (SWG Source)", "Directory containing appearance, shader and texture"),
+			('DSRC', "DSRC Repository (Restoration)", "Repository containing sku.0/sys.client, sys.shared and sys.server"),
+		),
+		default='AUTO',
+	)
+	auto_root: StringProperty(
+		name="Asset Root",
+		description="Client asset directory or DSRC repository. If empty, use the saved SWG Source Asset Root",
+		subtype='DIR_PATH',
+	)
 	swg_root: StringProperty(
-		name="SWG Client Extract Dir (should contain dirs like 'appearance', 'shader', 'texture', etc.",
-		subtype='FILE_PATH',
+		name="SWG Source Asset Root",
+		description="Directory containing appearance, shader and texture; retains the previously saved client extract path",
+		subtype='DIR_PATH',
+	)
+	dsrc_root: StringProperty(
+		name="DSRC Repository Root",
+		description="Repository directory containing sku.0, such as D:/r3git/dsrc",
+		subtype='DIR_PATH',
 	)
 
 	convert_tex_to_png: BoolProperty(
@@ -138,7 +160,21 @@ class SWGPreferences(AddonPreferences):
 
 	def draw(self, context):
 		layout = self.layout
-		layout.prop(self, "swg_root")
+		layout.prop(self, "asset_layout")
+		if self.asset_layout == 'DSRC':
+			layout.prop(self, "dsrc_root")
+		elif self.asset_layout == 'FLAT':
+			layout.prop(self, "swg_root")
+		else:
+			layout.prop(self, "auto_root")
+			if not self.auto_root:
+				layout.prop(self, "swg_root")
+		roots = support.get_asset_roots(context)
+		if roots:
+			box = layout.box()
+			box.label(text="Asset search order:")
+			for root in roots:
+				box.label(text=root, icon='FILE_FOLDER' if os.path.isdir(root) else 'ERROR')
 		layout.prop(self, "convert_tex_to_png")
 
 class OBJECT_OT_addon_prefs_swg(Operator):
@@ -152,7 +188,7 @@ class OBJECT_OT_addon_prefs_swg(Operator):
 		preferences = context.preferences
 		addon_prefs = preferences.addons[__name__].preferences
 
-		info = f"Name: {__name__} Path: {addon_prefs.swg_root}"
+		info = f"Name: {__name__} Asset roots: {support.get_asset_roots(context)}"
 
 		self.report({'INFO'}, info)
 		print(info)
@@ -187,6 +223,13 @@ class ImportMSH(bpy.types.Operator, ImportHelper):
 			options={'HIDDEN', 'SKIP_SAVE'},
 		)
 			
+	def invoke(self, context, _event):
+		directory = support.asset_directory(context, "appearance/mesh")
+		if directory:
+			self.filepath = directory
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
+
 	def execute(self, context):
 		keywords = self.as_keywords(ignore=("filter_glob",
 											"files",
@@ -331,6 +374,13 @@ class ImportMGN(bpy.types.Operator, ImportHelper):
 				options={'HIDDEN'},
 		)
 
+	def invoke(self, context, _event):
+		directory = support.asset_directory(context, "appearance/mesh")
+		if directory:
+			self.filepath = directory
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
+
 	def execute(self, context):
 		keywords = self.as_keywords(ignore=("axis_forward",
 											"axis_up",
@@ -457,8 +507,8 @@ class ImportLOD(bpy.types.Operator, ImportHelper):
 
 	def invoke(self, context, _event):
 		
-		if context.preferences.addons[__package__].preferences.swg_root != "":			
-			self.filepath = context.preferences.addons[__package__].preferences.swg_root +"/appearance/lod/"
+		if support.get_asset_roots(context):
+			self.filepath = support.asset_directory(context, "appearance/lod")
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
@@ -517,8 +567,8 @@ class ExportLOD(bpy.types.Operator, ExportHelper):
 
 	def invoke(self, context, _event):
 		
-		if context.preferences.addons[__package__].preferences.swg_root != "":			
-			self.filepath = context.preferences.addons[__package__].preferences.swg_root +"/appearance/lod/"
+		if support.get_asset_roots(context):
+			self.filepath = support.asset_directory(context, "appearance/lod")
 
 		self.filepath += "THE BLENDER COLLECTION NAME WILL BE USED AS THE FILENAME, EXPORTED INTO THIS DIRECTORY!"
 
@@ -579,8 +629,8 @@ class ExportLMG(bpy.types.Operator, ExportHelper):
 
 	def invoke(self, context, _event):
 		
-		if context.preferences.addons[__package__].preferences.swg_root != "":			
-			self.filepath = context.preferences.addons[__package__].preferences.swg_root +"/appearance/mesh/"
+		if support.get_asset_roots(context):
+			self.filepath = support.asset_directory(context, "appearance/mesh")
 
 		self.filepath += "THE BLENDER COLLECTION NAME WILL BE USED AS THE FILENAME, EXPORTED INTO THIS DIRECTORY!"
 
@@ -643,6 +693,13 @@ class ImportPOB(bpy.types.Operator, ImportHelper):
 			options={'HIDDEN', 'SKIP_SAVE'},
 		)
 			
+	def invoke(self, context, _event):
+		directory = support.asset_directory(context, "appearance")
+		if directory:
+			self.filepath = directory
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
+
 	def execute(self, context):
 		keywords = self.as_keywords(ignore=("filter_glob",
 											"files",
@@ -859,8 +916,8 @@ class ExportSKT(bpy.types.Operator, ExportHelper):
 	filter_glob: StringProperty(default="*.skt", options={'HIDDEN'})
 
 	def invoke(self, context, _event):
-		if context.preferences.addons[__package__].preferences.swg_root != "":			
-			self.filepath = context.preferences.addons[__package__].preferences.swg_root +"/appearance/skeleton/"
+		if support.get_asset_roots(context):
+			self.filepath = support.asset_directory(context, "appearance/skeleton")
 
 		self.filepath += "THE BLENDER COLLECTION NAME WILL BE USED AS THE FILENAME, EXPORTED INTO THIS DIRECTORY!"
 
@@ -893,8 +950,8 @@ class ExportSAT(bpy.types.Operator, ExportHelper):
 
 	def invoke(self, context, _event):
 		
-		if context.preferences.addons[__package__].preferences.swg_root != "":			
-			self.filepath = context.preferences.addons[__package__].preferences.swg_root +"/appearance/mesh/"
+		if support.get_asset_roots(context):
+			self.filepath = support.asset_directory(context, "appearance/mesh")
 
 		self.filepath += "THE BLENDER COLLECTION NAME WILL BE USED AS THE FILENAME, EXPORTED INTO THIS DIRECTORY!"
 
@@ -957,14 +1014,14 @@ class SWG_Load_Materials_Operator(bpy.types.Operator):
 	bl_idname = "object.swg_load_materials"
 	bl_label = "Find and load materials"
 	bl_description = '''Attempts to locate SWG shaders that match material names and set their properties automatically. 
-NOTE: If this option is disabled, you need to set the "SWG Client Extract Dir" property in the add-on preferences, and have 1 object selected'''
+NOTE: If this option is disabled, you need to set the "Asset Root" property in the add-on preferences, and have 1 object selected'''
 	
 	@classmethod
 	def poll(cls, context):
-		return context.active_object != None and (context.preferences.addons[__package__].preferences.swg_root != "")
+		return context.active_object != None and bool(support.get_asset_roots(context))
 
 	def invoke(self, context, event):
-		swg_root = context.preferences.addons[__package__].preferences.swg_root
+		swg_root = support.get_asset_roots(context)
 		tex_to_png = context.preferences.addons[__package__].preferences.convert_tex_to_png
 		print(f"invoke with: {context.active_object.name}")	 
 		for slot in context.active_object.material_slots:
@@ -984,7 +1041,7 @@ NOTE: If this option is disabled, you need to set the "SWG Client Extract Dir" p
 class SWG_Add_Material_Operator(bpy.types.Operator):
 	bl_idname = "object.swg_add_material"
 	bl_label = "Add SWG Shader as Material"
-	bl_description = '''If this option is disabled, you need to set the "SWG Client Extract Dir" property in the add-on preferences, and have 1 object selected'''
+	bl_description = '''If this option is disabled, you need to set the "Asset Root" property in the add-on preferences, and have 1 object selected'''
 
 	filename_ext = ".sht"
 	filter_glob : StringProperty(default="*.sht", options={'HIDDEN'})
@@ -992,10 +1049,10 @@ class SWG_Add_Material_Operator(bpy.types.Operator):
 	
 	@classmethod
 	def poll(cls, context):
-		return context.active_object != None and (context.preferences.addons[__package__].preferences.swg_root != "")
+		return context.active_object != None and bool(support.get_asset_roots(context))
 
 	def execute(self, context):
-		swg_root = context.preferences.addons[__package__].preferences.swg_root
+		swg_root = support.get_asset_roots(context)
 		tex_to_png = context.preferences.addons[__package__].preferences.convert_tex_to_png
 		context.active_object.data.materials.append(None)
 		shader = swg_types.SWGShader(support.clean_path(self.properties.filepath), swg_root)
@@ -1005,7 +1062,7 @@ class SWG_Add_Material_Operator(bpy.types.Operator):
 		return {'FINISHED'}
  
 	def invoke(self, context, event):
-		self.filepath = context.preferences.addons[__package__].preferences.swg_root +"/shader/"
+		self.filepath = support.asset_directory(context, "shader")
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
@@ -1124,8 +1181,8 @@ class SWG_Load_Skeleton_For_MGN(bpy.types.Operator):
 	def invoke(self, context, event):
 		# default_filename=context.active_object.name.lower()+".skt"
 		# self.filepath = default_filename		
-		if context.preferences.addons[__package__].preferences.swg_root != "":			
-			self.filepath = context.preferences.addons[__package__].preferences.swg_root +"/appearance/skeleton/"
+		if support.get_asset_roots(context):
+			self.filepath = support.asset_directory(context, "appearance/skeleton")
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
  
@@ -1147,7 +1204,7 @@ class SWG_Initialize_MGN_From_Existing(bpy.types.Operator):
 
 	def execute(self, context): 
 		mgn_path =  self.properties.filepath
-		mgn = swg_types.SWGMgn(mgn_path,context.preferences.addons[__package__].preferences.swg_root)
+		mgn = swg_types.SWGMgn(mgn_path,support.get_asset_roots(context))
 		mgn.load()
 		scene_object = context.active_object
 		print(f"mgn: {mgn}")
@@ -1181,8 +1238,8 @@ class SWG_Initialize_MGN_From_Existing(bpy.types.Operator):
 		return {'FINISHED'}
 
 	def invoke(self, context, event):	 
-		if context.preferences.addons[__package__].preferences.swg_root != "":			
-			self.filepath = context.preferences.addons[__package__].preferences.swg_root +"/appearance/mesh/"
+		if support.get_asset_roots(context):
+			self.filepath = support.asset_directory(context, "appearance/mesh")
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
  
@@ -1343,8 +1400,8 @@ class SWG_Load_Flr(bpy.types.Operator):
 		return {'FINISHED'}
 
 	def invoke(self, context, event):
-		if context.preferences.addons[__package__].preferences.swg_root != "":			
-			self.filepath = context.preferences.addons[__package__].preferences.swg_root +"/appearance/collision/"
+		if support.get_asset_roots(context):
+			self.filepath = support.asset_directory(context, "appearance/collision")
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
  
